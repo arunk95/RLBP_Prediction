@@ -1,0 +1,152 @@
+---
+title: "Looping Trial 1 - 22-5-20"
+output: html_document
+self_contained: no
+---
+
+#Loading packages
+
+```{r setup, include=FALSE}
+library(tidyr)
+library(ggplot2)
+library(dplyr)
+library(Peptides)
+library(xlsx)
+library(tidyverse)
+library(randomForest)
+library(caret)
+library(mlbench)
+library(MLeval)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Loading the data
+
+```{r cyto}
+
+#Loading the main dataset with all 32 features
+hp32 <- read.csv("E:/Review 2020/Human_proteome_32features.csv")
+hp32 %>%
+ as_tibble()
+
+#List of R-loop binding proteins
+rloopdata <- read.csv("E:/Review 2020/Rloop_binding_proteins.csv")
+rloop <- merge(rloopdata, hp32, by="UniprotID")
+
+#List of cytoplasmic proteins
+cytotable <- read.csv("E:/Review 2020/Hcyto.csv")
+cytotable %>% as_tibble()
+
+#Ensuring the human proteome list is devoid of RLBPs
+hpmeforcyto <- hp32[!(hp32$UniprotID %in% rloop$UniprotID),]
+#Merging cyto list to get all 32 features for cytoplasmic proteins (minus any RLBPs)
+cyto <- merge(cytotable,hpmeforcyto, by="UniprotID")
+
+#Adding column "Group" to help the model distinguish between R (RLBP) and H (Human proteome/non-RLBP)
+rloop$Group <- c("R")
+cyto$Group <- c("H")
+hpmeforcyto$Group <- c("H")
+
+#Create a whole proteome dataset for prediction; RLBP+Human proteome(minus RLBPs)
+maintest <- rbind(rloop,hpmeforcyto)
+maintest$Group <- as.factor(maintest$Group)
+
+```
+
+#Ready for RF
+
+#Finding the right features for selection:
+#Using only 150 proteins as Human/H so that there is no unbalance between Rloopome and Human proteins
+
+```{r 150vs122}
+
+#Establishing parameters for the random forest algorithm
+fitcontrol <- trainControl(
+    method = "cv",                   # k-fold cross validation
+    number = 10,                     # number of folds
+    savePredictions = "final",       # saves predictions for optimal tuning parameter
+    classProbs = T,                  # class probabilities be returned
+    summaryFunction=twoClassSummary  # results summary function
+) 
+
+#Use previously created whole proteome list and prepare it for testing by removing the group column.
+wholeprottable <- maintest[,-37]
+#Creating a column of UniprotID from the whole proteome table for final steps (see below; inside the for loop)
+finaldataframeforprobability <- data.frame(wholeprottable$UniprotID)
+
+
+
+#Create training and testing dataframes to input data for ROC curves
+roctrainframe<-data.frame(H=integer(0),R=integer(0),obs=character(0),Group=character(0))
+roctestframe<-data.frame(H=integer(0),R=integer(0),obs=character(0),Group=character(0))
+
+#Lets try looping
+#Create a loop from 1:100 with a n=i+1 step(default) and create 100 different training and testing models using this method. 
+
+for(i in 1:100){
+set.seed(i)
+cytoshuffle <- cyto[sample(nrow(cyto)),] #randomly shuffle cytoplasmic dataset
+cytoshufsub <- cytoshuffle[1:150,] #take top 150 proteins and put them in an new dataframe
+cytoshufsub$Group <- c("H") #create column Group
+newtrain <- rbind(rloop,cytoshufsub) #combine RLBP and 150 shuffled cyto proteins
+
+#Training with the new 150Hvs116R dataset. 
+
+newt <- newtrain[,-1]
+rownames(newt) <- newtrain[,1]
+newt$Group <- as.factor(newt$Group)
+
+set.seed(105) #Keep this seed constant so as to make 100 datasets with RLBPs at the same position but with different cyto proteins (be it Training or testing)
+row.number = sample(1:nrow(newt),0.8*nrow(newt)) #split into 80% training, 20% testing
+train = newt[row.number,]
+test = newt[-row.number,]
+dim(train)
+dim(test)
+
+
+#Run random forest with all features
+rf <- train(Group ~ ., data=train, method="rf",tuneLength = 5, trControl = fitcontrol) #instead of setting number of features at each node, we let the model prioritize highest ROC and choose features/node accordingly
+rf
+
+#Test
+testpred <- predict(rf,test)
+confmatrix <- confusionMatrix(reference = test$Group, data = testpred, mode='everything', positive='R')
+
+#Use previously created whole proteome dataset for testing
+wholeprotprint <- predict(rf, wholeprottable, type="prob") #type="prob" gives us the probabilities for each protein
+
+finaldataframeforprobability <- cbind(finaldataframeforprobability,wholeprotprint$R) #Combine the uniprot list made earlier with the probability for each protein and extract it later
+
+
+#ROC curve data
+roctrain <- rf$pred[,c("H","R","obs")]
+number <- i
+roctrain$Group <- c(number)
+roctrainframe <- rbind(roctrainframe,roctrain)
+
+predprob <- predict(rf,test,type="prob")
+roctest <- cbind(predprob,test$Group)
+ss <- i+1000 #to avoid grouping issues, we give testing sets a number different than 1:100 by adding 1000. Could be any number. As long as it doesn't fall between 1:100.
+roctest$Group <- c(ss)
+colnames(roctest)[3] <- "obs"
+roctestframe <- rbind(roctestframe,roctest)
+
+}
+
+finaldataframeforprobability #should contain UniprotID followed by probability for each proteins in all 100 models. 
+
+#Plot ROC training
+plotroctrain <- evalm(roctrainframe,plots='R',cols=c("Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4"))
+
+#Plot ROC testing
+plotroctest <- evalm(roctestframe,plots='R',cols=c("Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4"))
+
+plotroctrain$roc
+plotroctest$roc
+
+#Combine to plot ROC training and testing together
+roctot <- rbind(roctrainframe,roctestframe)
+plotroctot <- evalm(roctot,plots='R',cols=c("Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Steelblue4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4","Palegreen4"))
+
+plotroctot$roc
+```
