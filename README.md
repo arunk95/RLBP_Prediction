@@ -1,6 +1,6 @@
 # RLBP_Analysis
 
-Hey, I've added the code here. Please let me know if you have trouble understanding any step - I've added to comments just in case.
+Hey, I've added the code here (RMD file). Please let me know if you have trouble understanding any step - I've added to comments in it just in case.
 
 3 datasets uploaded:
 
