@@ -55,7 +55,6 @@ maintest$Group <- as.factor(maintest$Group)
 
 #Ready for RF
 
-#Finding the right features for selection:
 #Using only 150 proteins as Human/H so that there is no unbalance between Rloopome and Human proteins
 
 ```{r 150vs122}
