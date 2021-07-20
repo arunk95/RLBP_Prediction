@@ -1,9 +1,9 @@
-# RLBP_Prediction
+# Scripts for developing a random forest classifier for R-loop binding proteins (RLBP). 
 
-Hey, I've added the code here (RMD file). Please let me know if you have trouble understanding any step - I've added to comments in it just in case.
+Datasets included:
+Human Proteome_30 features.csv
+RLBP list
+Human proteome list (minus RLBPs)
 
-3 datasets uploaded:
+Developed in R version 3.6.0.
 
-1) RLBP list
-2) Cyto list
-3) Whole proteome 32 feature table
