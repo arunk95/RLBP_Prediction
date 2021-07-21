@@ -3,7 +3,6 @@
 Datasets included:
 1) Human Proteome_30 features.csv
 2) RLBP list
-3) Human proteome list (minus RLBPs)
 
 Developed in R version 3.6.0.
 
