@@ -25,11 +25,11 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r load}
 
 #Loading the main dataset with all 30 features
-hp30 <- read.csv(Human_proteome_32features.csv")
+hp30 <- read.csv(Human_proteome_30features.csv")
 
 #List of R-loop binding proteins (RLBPs)
-rloopdata <- read.csv("Rloop_binding_proteins.csv")
-rloop <- merge(rloopdata, hp32, by="UniprotID") #extract features for RLBPs
+rloopdata <- read.csv("IP-MS R-loop binding proteins.csv") #or Prox-MS RLBPs
+rloop <- merge(rloopdata, hp30, by="UniprotID") #extract features for RLBPs
 
 #Ensuring the human proteome list is devoid of RLBPs
 hpme <- hp30[!(hp30$UniprotID %in% rloop$UniprotID),]
@@ -45,8 +45,6 @@ main$Group <- as.factor(maintest$Group)
 ```
 
 #Ready for Random Forest
-
-#Using only 150 proteins as Human/H so that there is no unbalance between Rloopome and Human proteins
 
 ```{r RvsH}
 
@@ -72,10 +70,12 @@ roctestframe<-data.frame(H=integer(0),R=integer(0),obs=character(0),Group=charac
 #Looping
 #Create a loop from 1:100 with a n=i+1 step(default) and create 100 different training and testing models using this method. 
 
+#Maintaining 1:1 balance between negative and positive class to avoid imbalance between Rloop and Human proteins
+
 for(i in 1:100){
 set.seed(i)
 totshuffle <- hpme[sample(nrow(hpme)),] #randomly shuffle human proteome dataset
-totshufsub <- totshuffle[1:150,] #take top 150 proteins and put them in an new dataframe
+totshufsub <- totshuffle[1:300,] #take top 300 proteins (or 100 for Prox-MS) and put them in an new dataframe
 totshufsub$Group <- c("H") #create column Group
 newtrain <- rbind(rloop,totshufsub) #combine RLBP and 150 shuffled proteins
 
@@ -140,3 +140,4 @@ plotroctot <- evalm(roctot,plots='R',cols=c("Steelblue4","Steelblue4","Steelblue
 plotroctot$roc
 
 ```
+#Repeat the same for Prox-MS training dataset to develop the second RF model
